@@ -87,33 +87,38 @@ def foo():
 def func():
     res = yield foo()
     return ret + ' func end'
-
-# 被装饰的函数中可以通过 yield + promise 来挂起函数执行, promise resolve 之后会把结果变量放入res, 函数接着执行
-
+````
+* 被装饰的函数中可以通过 yield + promise 来挂起函数执行, promise resolve 之后会把结果变量放入res, 函数接着执行
+````
 f = func()
-# 被Async.async_func装饰的函数调用会返回一个promise对象, 被装饰函数执行到return则是调用promise.resolve(..)
- 
+````
+* 被Async.async_func装饰的函数调用会返回一个promise对象, 被装饰函数执行到return则是调用promise.resolve(..)
+````
 f.then(print)
 # >>> foo end func end
-# 打印被装饰函数的return结果
-
+````
+* 同样的, 异步函数中也可以yield另一个异步函数
+````
 @Async.async_func
 def func2():
     res = yield func()
-# 同样的, 异步函数中也可以yield另一个异步函数
 ````
 ----------
 ## kbe拓展:
 kbengine的内置函数都是通过回调实现异步逻辑, 用promise对回调进行封装就可以改造为异步调用函数
- 
-- kbe.Entity.delay:
-    一次性定时器
+
+- kbe.Entity.request: 远程请求发起端, 传入远程对象, 远程调用函数名称, 调用参数来发起远程请求, 配合onRequest/onResponse实现远程参数和回应数据传递
+```
+gold, = yield self.request(self.cell, 'getProps', ['gold'])
+```
+- kbe.Entity.delay: 一次性定时器
+```
+yield self.delay(5)
+```
 - kbe.Entity.onRequest:
     远程请求接收端, 需要**注册远程函数**
 - kbe.Entity.onResponse:
     远程请求回应端, 需要**注册远程函数**
-- kbe.Entity.request:
-    远程请求发起端, 传入远程对象, 远程调用函数名称, 调用参数来发起远程请求, 配合onRequest/onResponse实现远程参数和回应数据传递
 - kbe.Base.whenGetCell:
     base中的entity, 等待其cell创建完毕, 也就是 onGetCell 回调函数被调用时, 用于异步获取base的cell对象
 - kbe.Base.whenLoseCell:
