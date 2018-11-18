@@ -222,7 +222,6 @@ class Hall(KBEngine.Base, kbe.Base):
             return ret
 ```
 
-````
 ### 组织异步逻辑流程:
 ````
 @Async.async_func
