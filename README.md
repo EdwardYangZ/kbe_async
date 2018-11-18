@@ -120,33 +120,108 @@ kbengine的内置函数都是通过回调实现异步逻辑, 用promise对回调
     base中的entity, 等待其cell移除, 也就是 onLoseCell 回调函数被调用时
  
 ----------
-## 用例
-### Account转换为Player, 并自动同步属性:
-````
-@Async.async_func
-def giveClientToPlayer(self, player):
-  ''' 将客户端挂载给 player, player可能是一个远程对象 '''
-  self.playerID = player.id
-  self.giveClientTo(player)
-  
-  # 等待player的cell创建成功，已经创建会直接返回，用request发起远程请求
-  playerCell = yield self.request(player, 'whenGetCell', (,))
-  
-  # 远程设置playerCell的属性, setProps 在远程函数中注册
-  playerCell.setProps(dict(
-    nick=self.nick,
-    gold=self.gold
-  ))
-  self.updGold()
-  
-@Async.async_func
-def updGold(self, playerCell):
-  ''' 每5秒更新一次gold属性 '''
-  yield self.delay(5)
-  while self.playerID == playerCell.id:
-    gold, = yield self.request(playerCell, 'getProps', ('gold',))
-    self.gold = gold
-    yield self.delay(5)
+## 用例1
+
+* kbe原生异步处理方式, 一般用中间变量来等待接下来的处理, 例: Player 进入 Room
+```
+# base/Player.py
+class Player(KBEngine.Proxy):
+    def __init__(self):
+        KBEngine.Proxy.__init__(self)
+
+    def enterRoom(self, roomCell):
+        ''' 进入房间, 在 Player.def 中声明为远程调用 '''
+        self.createCellEntity(roomCell)
+
+# base/Room.py
+class Room(KBEngine.Base):
+    def __init__(self):
+        KBEngine.Base.__init__(self)
+        self._enterPlayers = []
+        self.createInNewSpace(0)
+
+    def onGetCell(self):
+        ''' cell 创建完成 '''
+        if len(self._enterPlayers):
+            for p in self._enterPlayers:
+                self.doPlayerEnter(p)
+            self._enterPlayers = []
+    
+    def doPlayerEnter(self, player):
+        ''' 玩家进入房间, 在 Room.def 中声明为远程调用 '''
+        if self.cell:
+            player.enterRoom(self.cell)
+            return
+        self._enterPlayers.append(player)
+```
+
+* 异步同步化处理, 去掉所有由异步调用引起的中间变量, 把 Room 改造一下
+```
+# Room.def 中增加接口 EntityBase
+
+# base/Room.py
+class Room(KBEngine.Base, kbe.Base):
+    def __init__(self):
+        KBEngine.Base.__init__(self)
+        self.createInNewSpace(0)
+
+    @Async.async_func
+    def doPlayerEnter(self, player):
+        ''' 玩家进入房间, 在 Room.def 中声明为远程调用 '''
+        if not self.cell:
+            # 等到 cell 创建完成
+            yield self.whenGetCell()
+        player.createRoom(self.cell)
+```
+
+* kbe.Entity.request, 远程请求与回应的同步化, 向另一个可能为远程实体的对象发起请求,请求就是其python类中定义的函数, 最后 return 的变量会返回给发起者
+```
+# base/Room.py
+class Room(KBEngine.Base, kbe.Base):
+    def __init__(self):
+        KBEngine.Base.__init__(self)
+        self._players = []
+        self.createInNewSpace(0)
+
+    @Async.async_func
+    def doPlayerEnter(self, player):
+        ''' 玩家进入房间, 可以不用声明远程调用 '''
+        if len(self._players) >= 3:
+            # 房间已满
+            return False
+        for p in self._players:
+            # 已经加入
+            if p.id == player.id:
+                return False
+        if not self.cell:
+            # 等到 cell 创建完成
+            yield self.whenGetCell()
+        self._players.append(player)
+        player.createRoom(self.cell)
+        return True
+
+# base/Hall.py
+class Hall(KBEngine.Base, kbe.Base):
+    def __init__(self):
+        KBEngine.Base.__init__(self)
+        KBEngine.globalData['Hall'] = self
+        self._rooms = []
+    
+    @Async.async_func
+    def matchRoom(self, player):
+        ''' 为玩家匹配一个房间加入, 失败就试下一个, 没有房间了就创建一个新的 '''
+        for r in self._rooms:
+            ret = yield self.request(r, 'doPlayerEnter', player)
+            if ret:
+                return True
+        room = yield kbe.createBaseAnyWhere('Room', {})
+        self._rooms.append(room)
+        ret = yield self.request(room, 'doPlayerEnter', player)
+        if not ret:
+            ret = yield self.mathRoom(player)
+            return ret
+```
+
 ````
 ### 组织异步逻辑流程:
 ````
