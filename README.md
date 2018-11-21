@@ -5,6 +5,7 @@
 - 对kbengine的实体Entity类进行拓展，实现常用异步调用函数
 - 远程调用会将参数进行串行化, 牺牲了部分效率
 - kbengine版本 1.0.0
+- 示例: https://github.com/EdwardYangZ/kbe_demo_ddz
  
 ----------
 ## 导入
